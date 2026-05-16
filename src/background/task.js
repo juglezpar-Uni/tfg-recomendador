@@ -1,14 +1,17 @@
-import { NativeModules} from 'react-native';
-const { SiddhiClientModule } = NativeModules;
+// Engine reference resolved via the adapter (Siddhi or JS based on Setting).
+import {getEngine} from './ruleEngineAdapter';
 
-import { isStopped, getResult } from './siddhiUtils';
+import {isStopped, getResult} from './siddhiUtils';
 import * as Schemas from '../realmSchemas/RealmServices';
 
 import {loginSensorizarServer} from '../services/externalServers/externalServers';
-import {buildSiddhiContextForTest}  from '../events/Context';
+import {buildSiddhiContextForTest} from '../events/Context';
 import {getRecommendationsWithExclusionSets} from '../services/exclusionSets/checkExclusionSets';
 import * as Notification from '../events/Notification';
-import {getActivitiesExamples, getContextExamples} from '../testData/LoadTestData';
+import {
+  getActivitiesExamples,
+  getContextExamples,
+} from '../testData/LoadTestData';
 import {startRecommendation} from '../em/Fetch';
 //let jsonContextExample = getContextExamples();
 /**
@@ -31,7 +34,7 @@ export const SendContextTask = async () => {
   }
 
   console.log('User is logged. Connecting to Siddhi...');
-  SiddhiClientModule.connect();
+  getEngine().connect();
 
   const stopped = await isStopped('S');
   console.log('Is Siddhi stopped:', stopped);
@@ -55,8 +58,7 @@ export const SendContextTask = async () => {
 
   let sensorizarToken;
   const tokenIsExpired =
-    !tokenObject ||
-    Math.abs(now - tokenObject.timestamp) / (60 * 1000) > 150;
+    !tokenObject || Math.abs(now - tokenObject.timestamp) / (60 * 1000) > 150;
 
   if (tokenIsExpired) {
     sensorizarToken = await loginSensorizarServer();
@@ -80,7 +82,7 @@ export const SendContextTask = async () => {
   const activeTR = Schemas.getActiveTriggeringRulesName();
   console.log('Step 3 - Active Triggering Rules:', activeTR);
 
-  SiddhiClientModule.sendEvent(contextStr);
+  getEngine().sendEvent(contextStr);
 };
 
 let jsonActivitiesExample = getActivitiesExamples();
@@ -105,7 +107,9 @@ export const ListenRecommendationResultTask = async () => {
   console.log('L isStopped:', stopped);
 
   if (stopped) {
-    console.log('LOG: INFO: Siddhi app is STOPPED -> no active triggering rules');
+    console.log(
+      'LOG: INFO: Siddhi app is STOPPED -> no active triggering rules',
+    );
     return;
   }
 
@@ -113,22 +117,33 @@ export const ListenRecommendationResultTask = async () => {
   const result = await getResult();
   console.log('L Result:', result);
 
-  if (result === 'start' || result == null || result === '') {return;}
+  if (result === 'start' || result == null || result === '') {
+    return;
+  }
 
   const r = result.split(',').filter(Boolean);
   const id = r.shift();
 
-  console.log('Step 4 - Recommendation types triggered by Siddhi for context:', id);
+  console.log(
+    'Step 4 - Recommendation types triggered by Siddhi for context:',
+    id,
+  );
   console.log('Cleaned Recommendation Types:', r);
 
   //Don't include "" as a result
-  const recommendations = getRecommendationsWithExclusionSets(r).filter(Boolean);
+  const recommendations =
+    getRecommendationsWithExclusionSets(r).filter(Boolean);
 
-
-  console.log('Step 5 - Filtered Recommendations (after Exclusion Sets):', recommendations);
+  console.log(
+    'Step 5 - Filtered Recommendations (after Exclusion Sets):',
+    recommendations,
+  );
 
   const recommendationsCopy = [...r];
-  console.log('GOING TO START RECOMMENDATION:', JSON.stringify(recommendationsCopy));
+  console.log(
+    'GOING TO START RECOMMENDATION:',
+    JSON.stringify(recommendationsCopy),
+  );
 
   if (recommendationsCopy.includes('changeRoom')) {
     console.log('[NEW] -> NEW RECOMMENDER ACTIVE');
