@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 
 // DB
 import * as Schemas from '../realmSchemas/TriggeringRulesServices';
-import * as CreateSiddhiApp from '../siddhi/index';
+import {bootstrapRuleEngine} from '../background/ruleEngineAdapter';
 function toPlainContextRule(rule) {
   return {
     id: rule.id,
@@ -79,14 +79,14 @@ const TabListTRules = ({ navigation }) => {
     setTriggeringRules(copy);
     const name = item.name;
     Schemas.deleteTriggeringRuleById(item.id);
-    CreateSiddhiApp.createSiddhiApp();
+    bootstrapRuleEngine();
     Alert.alert('Success!', `${name} deleted`);
   };
 
   const onSwitchChange = (item) => {
     const newValue = !item.switchState;
     Schemas.updateStateTriggeringRule(item.id, newValue);
-    CreateSiddhiApp.createSiddhiApp();
+    bootstrapRuleEngine();
     setTriggeringRules(prev =>
       prev.map(rule => rule.id === item.id ? { ...rule, switchState: newValue } : rule)
     );

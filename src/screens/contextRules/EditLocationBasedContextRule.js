@@ -14,7 +14,7 @@ import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 
 import * as Schemas from '../../realmSchemas/RealmServices';
-import * as CreateSiddhiApp from '../../siddhi/index';
+import {bootstrapRuleEngine} from '../../background/ruleEngineAdapter';
 import * as myPosition from '../../events/Position';
 
 const RenderTextField = ({
@@ -120,7 +120,7 @@ const EditLocationContextRuleScreen = ({ navigation }) => {
       Number(locationError)
     );
 
-    CreateSiddhiApp.createSiddhiApp();
+    bootstrapRuleEngine();
     Alert.alert('Success!', 'Context rule updated');
     setEdit(false);
   };

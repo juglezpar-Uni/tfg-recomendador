@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  NativeModules,
   Platform,
 } from 'react-native';
 import RNCalendarEvents from 'react-native-calendar-events';
@@ -31,9 +30,8 @@ import * as Communication from '../em/Fetch';
 //Schemas
 import * as Schemas from '../realmSchemas/RealmServices';
 
-//Siddhi
-const {SiddhiClientModule} = NativeModules;
-import * as CreateSiddhiApp from '../siddhi/index';
+//Rule engine (Siddhi native OR JS, selected via the RULE_ENGINE Parameter)
+import {getEngine, bootstrapRuleEngine} from '../background/ruleEngineAdapter';
 
 //Notifications
 import * as Notifications from '../events/Notification';
@@ -107,15 +105,24 @@ const LoadingScreen = ({navigation}) => {
       try {
         const count = realm.objects('ZaragozaPOI').length;
         if (count > 0) {
-          console.log(`[Loading] ZaragozaPOI already populated (${count} rows), skipping initial sync.`);
+          console.log(
+            `[Loading] ZaragozaPOI already populated (${count} rows), skipping initial sync.`,
+          );
           return;
         }
 
-        console.log('[Loading] No POIs found in Realm. Starting initial Zaragoza sync...');
+        console.log(
+          '[Loading] No POIs found in Realm. Starting initial Zaragoza sync...',
+        );
         const result = await syncPOIs();
-        console.log(`[Loading] Initial Zaragoza sync done: ${result.inserted}/${result.total} POIs stored.`);
+        console.log(
+          `[Loading] Initial Zaragoza sync done: ${result.inserted}/${result.total} POIs stored.`,
+        );
       } catch (err) {
-        console.warn('[Loading] Initial Zaragoza sync failed, continuing without POIs:', err);
+        console.warn(
+          '[Loading] Initial Zaragoza sync failed, continuing without POIs:',
+          err,
+        );
       }
     };
 
@@ -123,8 +130,8 @@ const LoadingScreen = ({navigation}) => {
       await myPosition.getLocationAsync();
       await myCalendar.getCalendarAsync();
 
-      SiddhiClientModule.connect();
-      CreateSiddhiApp.createSiddhiApp();
+      getEngine().connect();
+      bootstrapRuleEngine();
 
       const currentToken = Schemas.currentToken();
 

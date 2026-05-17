@@ -28,7 +28,7 @@ import { ChevronDownIcon, CircleMinus } from 'lucide-react-native';
 
 import * as Schemas from '../realmSchemas/RealmServices';
 import * as TriggerinSchema from '../realmSchemas/TriggeringRulesServices';
-import * as CreateSiddhiApp from '../siddhi/index';
+import {bootstrapRuleEngine} from '../background/ruleEngineAdapter';
 
 const RECOMMENDATION_TYPES = [
   'Restaurants', 'Shops', 'Museums', 'Places Of Interest',
@@ -208,7 +208,7 @@ const TabListCRforTR = ({ createScreen }) => {
       TriggerinSchema.updateTriggeringRule(triggeringRule.id, name, contextRules, typeOfRecommendation);
     }
 
-    CreateSiddhiApp.createSiddhiApp();
+    bootstrapRuleEngine();
 
     Alert.alert('Success!', `Triggering rule ${createScreen ? 'saved' : 'updated'}`, [
       {

@@ -22,7 +22,7 @@ import { HStack } from '@/components/ui/hstack';
 
 //DB
 import * as Schemas from '../../realmSchemas/RealmServices';
-import * as CreateSiddhiApp from '../../siddhi/index';
+import {bootstrapRuleEngine} from '../../background/ruleEngineAdapter';
 import * as ExternalServers from '../../services/externalServers/externalServers.json';
 // ExternalSelect.js
 const ExternalSelect = ({ label, selectedValue, onValueChange, options, disabled }) => (
@@ -173,7 +173,7 @@ const EditServerBasedContextRuleScreen = ({ navigation }) => {
           comparator,
           parseFloat(value)
         );
-        CreateSiddhiApp.createSiddhiApp();
+        bootstrapRuleEngine();
         Alert.alert('Success!', 'Context rule saved', [
           {
             text: 'OK',

@@ -10,7 +10,7 @@ import { Trash2 } from 'lucide-react-native';
 
 //DB and Siddhi
 import * as Schemas from '../realmSchemas/RealmServices';
-import * as CreateSiddhiApp from '../siddhi/index';
+import {bootstrapRuleEngine} from '../background/ruleEngineAdapter';
 /**
  * Serializes a ContextRule object by extracting only its primitive properties.
  * This avoids passing the full Realm object, which can contain circular references
@@ -95,7 +95,7 @@ const TabListCRules = () => {
       setContextRules(updated);
       const name = item.name;
       Schemas.deleteContextRuleById(item.id);
-      CreateSiddhiApp.createSiddhiApp();
+      bootstrapRuleEngine();
       Alert.alert(name, 'Deleted');
     }
   };

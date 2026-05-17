@@ -7,6 +7,10 @@
 import {NativeModules} from 'react-native';
 import {retrieveValueParameter} from '../realmSchemas/RealmServices';
 import {RuleEngine as JsEngine} from '../ruleEngine';
+import {createSiddhiAppIntro, createSiddhiAppEnd} from '../siddhi/structure.js';
+import {writeAllContextRules} from '../siddhi/rules/context/index.js';
+import {writeAllTriggeringRules} from '../siddhi/rules/triggering/index.js';
+import * as Schemas from '../realmSchemas/RealmServices';
 
 export const ENGINE_PARAM_USER = '*';
 export const ENGINE_PARAM_TYPE = 'SETTINGS';
@@ -70,4 +74,50 @@ export function getEngine() {
 export function _resetEngineCache() {
   _cached = null;
   _cachedId = null;
+}
+
+/**
+ * Starts the active rule engine with the current rules from Realm.
+ * Replaces the old direct calls to createSiddhiApp().
+ * If Siddhi: builds the SiddhiQL string and passes it to the native module.
+ * If JS: calls startApp() which reads rules from Realm directly.
+ * Stops the engine if there are no active triggering rules.
+ */
+
+export function bootstrapRuleEngine() {
+  const engine = getEngine();
+  const id = getActiveEngineId();
+  console.log(`[ruleEngineAdapter] bootstrapRuleEngine (engine=${id})`);
+
+  const triggeringRules = Schemas.retrieveTriggeringRulesSwitchOn();
+  if (!triggeringRules || triggeringRules.length === 0) {
+    console.log(
+      '[ruleEngineAdapter] no active triggering rules → stopping engine',
+    );
+    engine.stopApp();
+    return;
+  }
+
+  if (id === ENGINE_JS) {
+    // JS engine reads from Realm itself; the appDef argument is ignored.
+    engine.stopApp();
+    engine.startApp();
+    return;
+  }
+
+  // Siddhi path — build the SiddhiQL string from the existing generators.
+  try {
+    const contextRules = Schemas.retrieveContextRules();
+    const appDef = [
+      createSiddhiAppIntro(),
+      writeAllContextRules(contextRules),
+      writeAllTriggeringRules(triggeringRules),
+      createSiddhiAppEnd(),
+    ].join('\n');
+    engine.stopApp();
+    engine.startApp(appDef);
+    console.log('[ruleEngineAdapter] Siddhi App started');
+  } catch (err) {
+    console.error('[ruleEngineAdapter] error starting Siddhi:', err);
+  }
 }

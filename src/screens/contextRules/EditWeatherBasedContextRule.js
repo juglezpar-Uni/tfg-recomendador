@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Box } from '@/components/ui/box';
 //DB
 import * as Schemas from '../../realmSchemas/RealmServices';
-import * as CreateSiddhiApp from '../../siddhi/index';
+import {bootstrapRuleEngine} from '../../background/ruleEngineAdapter';
 
 const EditWeatherContextRuleScreen = ({ navigation }) => {
   const { contextRule } = useRoute().params;
@@ -58,7 +58,7 @@ const EditWeatherContextRuleScreen = ({ navigation }) => {
         Alert.alert('Warning', 'There is already a context rule with that name. You must choose another one.');
       } else {
         Schemas.updateWeatherContextRule(id, trimmedName, checkWeather, Number(minTemp), Number(maxTemp));
-        CreateSiddhiApp.createSiddhiApp();
+        bootstrapRuleEngine();
 
         Alert.alert('Success!', 'Context rule saved', [
           {

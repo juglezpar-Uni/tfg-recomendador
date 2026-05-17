@@ -15,7 +15,7 @@ import { Box } from '@/components/ui/box';
 import { X } from 'lucide-react-native';
 
 import * as Schemas from '../../realmSchemas/RealmServices';
-import * as CreateSiddhiApp from '../../siddhi/index';
+import {bootstrapRuleEngine} from '../../background/ruleEngineAdapter';
 
 
 const EditCalendarBasedContextRuleScreen = ({ navigation }) => {
@@ -124,7 +124,7 @@ const EditCalendarBasedContextRuleScreen = ({ navigation }) => {
       Alert.alert('Warning', datesError);
     } else {
       Schemas.updateCalendarBasedContextRule(id, name, daysOfWeek, selectedStartDate, selectedEndDate);
-      CreateSiddhiApp.createSiddhiApp();
+      bootstrapRuleEngine();
       Alert.alert('Success!', 'Context rule updated');
       setEdit(false);
     }

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useRoute } from '@react-navigation/native';
 
 import * as Schemas from '../../realmSchemas/RealmServices';
-import * as CreateSiddhiApp from '../../siddhi/index';
+import {bootstrapRuleEngine} from '../../background/ruleEngineAdapter';
 
 /**
  * Formats a Date object to a "HH:MM" string.
@@ -129,7 +129,7 @@ const EditTimeBasedContextRuleScreen = ({ navigation }) => {
     }
 
     Schemas.updateTimeBasedContextRule(contextRule.id, name, startTime, endTime);
-    CreateSiddhiApp.createSiddhiApp();
+    bootstrapRuleEngine();
     Alert.alert('Success!', 'Context rule updated');
     setEdit(false);
   };
