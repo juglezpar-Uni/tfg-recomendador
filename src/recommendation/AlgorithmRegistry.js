@@ -6,8 +6,9 @@
 import RandomAlgorithm from './algorithms/RandomAlgorithm';
 import ClosenessAlgorithm from './algorithms/ClosenessAlgorithm';
 import KeywordAlgorithm from './algorithms/KeywordAlgorithm';
+import CustomAlgorithm from './algorithms/CustomAlgorithm';
 
-const ALL = [RandomAlgorithm, ClosenessAlgorithm, KeywordAlgorithm];
+const ALL = [RandomAlgorithm, ClosenessAlgorithm, KeywordAlgorithm, CustomAlgorithm];
 const BY_ID = new Map(ALL.map(a => [a.constructor.id, a]));
 
 /** Get algorithm instance by id. */

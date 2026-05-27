@@ -9,6 +9,9 @@ export { default as RuleEngine } from './RuleEngine';
 export {
   onRecommendationTriggered,
   setRecommendationTypeMap,
+  setRecommendationKeywordsMap,
   getAlgorithmForType,
+  getKeywordsForType,
   dispatchToRecommendationEngine,
+  bootstrapRecommendationBridge,
 } from './RecommendationBridge';

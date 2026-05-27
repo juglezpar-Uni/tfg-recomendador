@@ -33,6 +33,9 @@ import * as Schemas from '../realmSchemas/RealmServices';
 //Rule engine (Siddhi native OR JS, selected via the RULE_ENGINE Parameter)
 import {getEngine, bootstrapRuleEngine} from '../background/ruleEngineAdapter';
 
+//Bridge between the rule engine (Sprint 3) and the recommendation engine (Sprint 2)
+import {bootstrapRecommendationBridge} from '../ruleEngine';
+
 //Notifications
 import * as Notifications from '../events/Notification';
 
@@ -49,6 +52,8 @@ import {syncPOIs} from '../dataSource/ZaragozaDataSource';
 const LoadingScreen = ({navigation}) => {
   useEffect(() => {
     const initialize = async () => {
+      const {storeParameter} = require('../realmSchemas/RealmServices');
+      storeParameter('*', 'SETTINGS', 'RULE_ENGINE', 'siddhi');
       try {
         //Notifications.configureNotifications();
 
@@ -132,6 +137,10 @@ const LoadingScreen = ({navigation}) => {
 
       getEngine().connect();
       bootstrapRuleEngine();
+      // Wire rule-engine triggers to the Sprint-2 recommendation algorithms.
+      // Uses the default type→algorithm and type→keywords maps; pass a
+      // config object here to override.
+      bootstrapRecommendationBridge();
 
       const currentToken = Schemas.currentToken();
 

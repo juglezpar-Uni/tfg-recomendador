@@ -13,6 +13,7 @@ import {
   retrieveCurrentLocation,
   getAllZaragozaPOIs,
   clearRecommendationCache,
+  getValorations,
 } from '../realmSchemas/RealmServices';
 import {realm} from '../realmSchemas/RealmInstance';
 
@@ -60,15 +61,24 @@ export async function recommend({
     return [];
   }
 
-  // 4. Run algorithm (pure function, no Realm access)
-  const scored = algorithm.score(user, pois, context) ?? [];
+  // 4. Load extra data if the algorithm needs it (e.g. valorations for CustomAlgorithm)
+  let enrichedContext = context;
+  if (algorithm.constructor.requiresValorations === true) {
+    enrichedContext = {
+      ...context,
+      valorations: getValorations(resolvedUserId),
+    };
+  }
 
-  // 5. Cache results (replace previous batch for this user+algorithm)
+  // 5. Run algorithm (pure function, no Realm access)
+  const scored = algorithm.score(user, pois, enrichedContext) ?? [];
+
+  // 6. Cache results (replace previous batch for this user+algorithm)
   if (persist && scored.length > 0) {
     persistBatch(resolvedUserId, algorithmId, scored);
   }
 
-  // 6. Attach full POI data for the UI
+  // 7. Attach full POI data for the UI
   const poisById = new Map(pois.map(p => [p.id, p]));
   return scored.map(s => ({...s, poi: poisById.get(s.poiId) ?? null}));
 }

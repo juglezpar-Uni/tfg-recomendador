@@ -1187,3 +1187,23 @@ export function getCachedRecommendations(userId, algorithmId) {
       timestamp: r.timestamp,
     }));
 }
+
+/**
+ * Returns all valorations for a user as plain objects.
+ * Used by CustomAlgorithm to factor in historical ratings.
+ *
+ * @param {string} userId
+ * @returns {Array<{id, userId, poiId, rating, timestamp}>}
+ */
+export function getValorations(userId) {
+  return realm
+    .objects('Valoration')
+    .filtered('userId == $0', userId)
+    .map(v => ({
+      id: v.id,
+      userId: v.userId,
+      poiId: v.poiId,
+      rating: v.rating,
+      timestamp: v.timestamp,
+    }));
+}

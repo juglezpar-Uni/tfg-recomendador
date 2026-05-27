@@ -1,15 +1,27 @@
 /**
- * Connects the rule engine (when to recommend) with the recommendation
- * engine (what to recommend). Uses a subscriber pattern.
+ * Connects rule engine triggers with recommendation algorithms.
  *
+ * Two configurable maps:
+ *   - typeToAlgorithm: which algorithm runs for each recommendation type
+ *   - typeToKeywords: how to translate types to POI vocabulary (e.g. "Restaurants" → ["restaurante"])
  *
- * To activate:
- *   setRecommendationTypeMap({ Restaurants: 'closeness' });
- *   onRecommendationTriggered(dispatchToRecommendationEngine);
+ * Call bootstrapRecommendationBridge() at startup to wire everything.
  */
-
 const _listeners = new Set();
 let _typeToAlgorithm = {};
+let _typeToKeywords = {};
+
+// Built-in defaults. Spanish keywords cover the Zaragoza Open Data vocabulary
+// (POI types come back as `http://.../kos/turismo/restaurante`, etc.).
+const DEFAULT_TYPE_TO_ALGORITHM = {
+  Restaurants: 'closeness',
+  Museums: 'keyword',
+  default: 'random',
+};
+const DEFAULT_TYPE_TO_KEYWORDS = {
+  Restaurants: ['restaurante'],
+  Museums: ['museo'],
+};
 
 /**
  * Subscribe to recommendation triggers.
@@ -42,19 +54,44 @@ export function notify(payload) {
  * Configure the recommendationType → algorithmId mapping.
  * Replaces the previous map entirely (caller wins).
  *
- * @param {Object<string, string>} map  e.g. { Restaurants: 'closeness' }
+ * @param {Object<string, string>} map  e.g. { Restaurants: 'closeness', default: 'random' }
  */
 export function setRecommendationTypeMap(map) {
   _typeToAlgorithm = {...(map ?? {})};
 }
 
 /**
+ * Configure the recommendationType → keywords[] mapping used by CustomAlgorithm
+ * (and any other algorithm interested in matching the rule-fired type against
+ * POI metadata in the local vocabulary).
+ *
+ * @param {Object<string, Array<string>>} map  e.g. { Restaurants: ['restaurante'] }
+ */
+export function setRecommendationKeywordsMap(map) {
+  _typeToKeywords = {...(map ?? {})};
+}
+
+/**
  * Look up the algorithm bound to a given recommendation type.
+ * Falls back to the `default` entry in the map if no explicit binding exists.
+ *
  * @param {string} recommendationType
  * @returns {string|null}
  */
 export function getAlgorithmForType(recommendationType) {
-  return _typeToAlgorithm[recommendationType] ?? null;
+  return (
+    _typeToAlgorithm[recommendationType] ?? _typeToAlgorithm.default ?? null
+  );
+}
+
+/**
+ * Look up the keywords bound to a given recommendation type.
+ *
+ * @param {string} recommendationType
+ * @returns {Array<string>} possibly empty
+ */
+export function getKeywordsForType(recommendationType) {
+  return _typeToKeywords[recommendationType] ?? [];
 }
 
 /**
@@ -62,7 +99,12 @@ export function getAlgorithmForType(recommendationType) {
  * RecommendationEngine. Uses dynamic import so this module remains loadable in
  * environments where Realm is not available (e.g. unit tests).
  *
- * If no algorithm is mapped to the incoming type, the call is a no-op.
+ * The recommendationType (and any keywords mapped to it) are propagated into
+ * the algorithm's `context` so CustomAlgorithm (and future algorithms) can
+ * factor them into the scoring.
+ *
+ * If no algorithm is mapped to the incoming type — and no `default` is set —
+ * the call is a no-op.
  *
  * @param {{ contextId: string, recommendationType: string, userId?: string, context?: Object }} payload
  * @returns {Promise<Array|null>} The recommend() result, or null if skipped.
@@ -71,26 +113,67 @@ export async function dispatchToRecommendationEngine(payload) {
   const algorithmId = getAlgorithmForType(payload?.recommendationType);
   if (!algorithmId) {
     console.log(
-      `[RecommendationBridge] no algorithm mapped for type "${payload?.recommendationType}", skipping`,
+      `[RecommendationBridge] no algorithm mapped for type "${payload?.recommendationType}" (no default either), skipping`,
     );
     return null;
   }
 
-  // Dynamic import keeps Realm out of the dependency graph until we actually
-  // need to dispatch. Tests can stub this module wholesale.
+  const matchKeywords = getKeywordsForType(payload.recommendationType);
+  const mergedContext = {
+    ...(payload.context ?? {}),
+    recommendationType: payload.recommendationType,
+    // Only set matchKeywords if we actually have any; otherwise let the
+    // algorithm fall back to its own default (usually the recommendationType
+    // itself as a single keyword).
+    ...(matchKeywords.length > 0 ? {matchKeywords} : {}),
+  };
+
+  // Dynamic import to avoid loading Realm in test environments
   const {recommend} = await import('../recommendation/RecommendationEngine');
   return recommend({
     algorithmId,
     userId: payload.userId,
-    context: payload.context ?? {},
+    context: mergedContext,
   });
 }
 
 /**
- * Test-only helper: wipes subscribers and the type map. Not exported via
- * src/ruleEngine/index.js.
+ * One-call helper to wire everything at app startup:
+ *   1. Installs the type → algorithm map (with sensible defaults).
+ *   2. Installs the type → keywords map (with sensible defaults).
+ *   3. Subscribes `dispatchToRecommendationEngine` (or a caller-supplied
+ *      subscriber) to rule-engine notifications.
+ *
+ *
+ * @param {Object} [config]
+ * @param {Object<string, string>}        [config.typeToAlgorithm]
+ * @param {Object<string, Array<string>>} [config.typeToKeywords]
+ * @param {Function}                      [config.subscriber]  defaults to dispatchToRecommendationEngine
+ * @returns {() => boolean} unsubscribe function
+ */
+export function bootstrapRecommendationBridge(config = {}) {
+  const typeToAlgorithm = config.typeToAlgorithm ?? DEFAULT_TYPE_TO_ALGORITHM;
+  const typeToKeywords = config.typeToKeywords ?? DEFAULT_TYPE_TO_KEYWORDS;
+  const subscriber = config.subscriber ?? dispatchToRecommendationEngine;
+
+  setRecommendationTypeMap(typeToAlgorithm);
+  setRecommendationKeywordsMap(typeToKeywords);
+  const unsub = onRecommendationTriggered(subscriber);
+
+  console.log(
+    `[RecommendationBridge] bootstrap complete — types: ${Object.keys(
+      typeToAlgorithm,
+    ).join(', ')}`,
+  );
+  return unsub;
+}
+
+/**
+ * Test-only helper: wipes subscribers, the type map and the keywords map.
+ * Not exported via src/ruleEngine/index.js.
  */
 export function _resetForTests() {
   _listeners.clear();
   _typeToAlgorithm = {};
+  _typeToKeywords = {};
 }
