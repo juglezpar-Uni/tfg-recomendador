@@ -26,6 +26,7 @@ import * as myPosition from '../events/Position';
 
 //EM
 import * as Communication from '../em/Fetch';
+import {checkEMAvailability} from '../em/Fetch'; // named export for the new probe
 
 //Schemas
 import * as Schemas from '../realmSchemas/RealmServices';
@@ -141,6 +142,12 @@ const LoadingScreen = ({navigation}) => {
       // Uses the default type→algorithm and type→keywords maps; pass a
       // config object here to override.
       bootstrapRecommendationBridge();
+
+      // Probe the EM backend so AlgorithmRegistry knows whether EM-bound
+      // algorithms can be offered. Awaited so any code that runs after this
+      // sees the correct flag; the probe itself has a 3s per-EM timeout so it
+      // can't stall startup for long.
+      await checkEMAvailability();
 
       const currentToken = Schemas.currentToken();
 

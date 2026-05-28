@@ -8,6 +8,63 @@ import EM from './Ems.json';
 import * as Context from '../events/Context';
 import * as Notification from '../events/Notification';
 import * as Location from '../events/Position';
+
+// EM availability cache (read by AlgorithmRegistry to hide EM-only algorithms)
+import {setEMAvailable} from './emStatus';
+
+/**
+ * Probes every EM in Ems.json in parallel and stores the result via
+ * `setEMAvailable()`. Resolves to `true` as soon as ANY EM responds (HTTP <
+ * 500); resolves to `false` only when every probe fails or times out.
+ *
+ * Times out individual requests after `timeoutMs` (default 3000) so a slow /
+ * unreachable EM doesn't stall app startup.
+ *
+ * Side effects:
+ *   - Updates emStatus.
+ *   - Logs `[EM] available` or `[EM] not available, local-only mode`.
+ *
+ * @param {Object} [opts]
+ * @param {number} [opts.timeoutMs=3000]
+ * @returns {Promise<boolean>}
+ */
+export async function checkEMAvailability({timeoutMs = 3000} = {}) {
+  const managers = EM?.list ?? [];
+  if (managers.length === 0) {
+    console.log('[EM] not available, local-only mode (no EMs in Ems.json)');
+    setEMAvailable(false);
+    return false;
+  }
+
+  const probe = async em => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(`${em.address}/ping`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      // Any response under 500 means the EM is at least answering.
+      return resp.status < 500;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const results = await Promise.all(managers.map(probe));
+  const available = results.some(Boolean);
+
+  setEMAvailable(available);
+  if (available) {
+    const okCount = results.filter(Boolean).length;
+    console.log(`[EM] available (${okCount}/${managers.length} reachable)`);
+  } else {
+    console.log('[EM] not available, local-only mode');
+  }
+  return available;
+}
 export async function testConnection() {
   // Log that the connection test is starting
   console.log('Testing connection...');
