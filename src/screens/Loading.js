@@ -53,8 +53,6 @@ import {syncPOIs} from '../dataSource/ZaragozaDataSource';
 const LoadingScreen = ({navigation}) => {
   useEffect(() => {
     const initialize = async () => {
-      const {storeParameter} = require('../realmSchemas/RealmServices');
-      storeParameter('*', 'SETTINGS', 'RULE_ENGINE', 'siddhi');
       try {
         //Notifications.configureNotifications();
 
@@ -133,6 +131,7 @@ const LoadingScreen = ({navigation}) => {
     };
 
     const prepareSession = async () => {
+      require('../experiments/benchmark').clearSyntheticRules();
       await myPosition.getLocationAsync();
       await myCalendar.getCalendarAsync();
 

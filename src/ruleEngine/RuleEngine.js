@@ -69,32 +69,35 @@ class RuleEngine {
   }
 
   /**
-   * Process one Context tick. Accepts the same JSON shape that
-   * `buildSiddhiContextForTest` produces (see src/events/Context.js):
-   *   { UserContext: {...}, Observations: [...] }
+   * Pure evaluation step. Evaluates every active Context Rule against the
+   * incoming event and returns the list of Triggering Rules that fired, WITHOUT
+   * pushing to the ResultsAggregator or notifying the RecommendationBridge.
    *
-   * @param {string} jsonStr
+   * This is the primitive the benchmark harness measures (see
+   * src/experiments/benchmark/): it isolates the CR + TR evaluation cost from
+   * the 7-second window and any side effects. `sendEvent` composes this method
+   * with the aggregator/bridge for the production data path.
+   *
+   * @param {string|Object} input JSON string or already-parsed event
+   * @returns {Array<{contextId: string, recommendationType: string}>}
    */
-  sendEvent(jsonStr) {
+  evaluateSync(input) {
     if (this._stopped) {
-      return;
+      return [];
     }
 
     let event;
     try {
-      event = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+      event = typeof input === 'string' ? JSON.parse(input) : input;
     } catch (err) {
       console.error('[RuleEngine] malformed event JSON:', err);
-      return;
+      return [];
     }
 
     const userContext = event?.UserContext;
     const observations = event?.Observations ?? [];
     if (!userContext?.contextId) {
-      console.warn(
-        '[RuleEngine] event missing UserContext.contextId, skipping',
-      );
-      return;
+      return [];
     }
 
     // 1. Evaluate every Context Rule once for this tick.
@@ -103,18 +106,32 @@ class RuleEngine {
       crEvals[cr.name] = evaluateContextRule(cr, userContext, observations);
     }
 
-    // 2. For each active TR, AND the (optionally negated) results.
+    // 2. Collect every TR whose AND-of-CRs (with NOT) holds.
+    const triggered = [];
     for (const tr of this._triggeringRules) {
-      if (!evaluateTriggeringRule(tr, crEvals)) {
-        continue;
+      if (evaluateTriggeringRule(tr, crEvals)) {
+        triggered.push({
+          contextId: userContext.contextId,
+          recommendationType: tr.recommendationType,
+        });
       }
+    }
+    return triggered;
+  }
 
-      // 3. Push to the 7s aggregator AND notify the Sprint-2 bridge.
-      this._aggregator.push(userContext.contextId, tr.recommendationType);
-      Bridge.notify({
-        contextId: userContext.contextId,
-        recommendationType: tr.recommendationType,
-      });
+  /**
+   * Process one Context tick. Accepts the same JSON shape that
+   * `buildSiddhiContextForTest` produces (see src/events/Context.js):
+   *   { UserContext: {...}, Observations: [...] }
+   *
+   * @param {string} jsonStr
+   */
+  sendEvent(jsonStr) {
+    const triggered = this.evaluateSync(jsonStr);
+    for (const t of triggered) {
+      // Push to the 7s aggregator AND notify the Sprint-2 bridge.
+      this._aggregator.push(t.contextId, t.recommendationType);
+      Bridge.notify(t);
     }
   }
 
