@@ -5,15 +5,15 @@ workflows:
     max_build_duration: 60
     environment:
       node: 20
-      xcode: latest
+      xcode: 16.2
       cocoapods: default
     scripts:
       - name: Instalar dependencias de Node
         script: |
-          npm install
+          npm ci --legacy-peer-deps
       - name: Instalar CocoaPods
         script: |
-          cd ios && pod install
+          cd ios && pod install --repo-update
       - name: Compilar para simulador iOS (sin firma)
         script: |
           cd ios
@@ -23,7 +23,8 @@ workflows:
             -configuration Debug \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO
     artifacts:
-      - ios/build/**/*.app
+      - ios/build/Build/Products/Debug-iphonesimulator/*.app
