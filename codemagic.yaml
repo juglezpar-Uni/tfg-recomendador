@@ -1,0 +1,29 @@
+workflows:
+  ios-simulator-build:
+    name: iOS Simulator Build (sin firma)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      node: 20
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Instalar dependencias de Node
+        script: |
+          npm install
+      - name: Instalar CocoaPods
+        script: |
+          cd ios && pod install
+      - name: Compilar para simulador iOS (sin firma)
+        script: |
+          cd ios
+          xcodebuild build \
+            -workspace MobileApp.xcworkspace \
+            -scheme MobileApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+    artifacts:
+      - ios/build/**/*.app
