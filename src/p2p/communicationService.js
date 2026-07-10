@@ -2,8 +2,13 @@ import { NativeModules, NativeEventEmitter,  PermissionsAndroid, Platform } from
 import { getSettingValue } from '../realmSchemas/SettingsServices';
 import {existsActivity,storeActivity, getAllActivities} from '../realmSchemas/RealmServices';
 import uuid from 'react-native-uuid';
-const { P2PModule } = NativeModules;
-const p2pEvents = new NativeEventEmitter(P2PModule);
+// P2P (Nearby Connections) is an Android-only native module. On iOS the
+// module is absent, so we short-circuit here to avoid
+// `new NativeEventEmitter(undefined)` which throws an Invariant Violation
+// at module import time on iOS and aborts the whole JS bundle.
+const P2PModule =
+  Platform.OS === 'android' ? NativeModules.P2PModule : null;
+const p2pEvents = P2PModule ? new NativeEventEmitter(P2PModule) : null;
 
 /**
  * Solicita permisos necesarios para conexiones P2P en Android.
@@ -103,6 +108,7 @@ export async function checkP2PPermissions() {
  * @returns {Promise<void>|any} Promesa o resultado del módulo nativo al iniciar el servicio.
  */
 export const startP2P = (serviceName, userId) => {
+    if (!P2PModule) return;
     return P2PModule.start(serviceName, userId);
 };
 
@@ -113,6 +119,7 @@ export const startP2P = (serviceName, userId) => {
  * @returns {Promise<void>|any} Promesa o resultado del módulo nativo al detener el servicio.
  */
 export const stopP2P = () => {
+    if (!P2PModule) return;
     return P2PModule.stop();
 };
 
@@ -124,6 +131,7 @@ export const stopP2P = () => {
  * @returns {Promise<boolean>} `true` si está detenido, `false` si está en ejecución.
  */
 export const isStopped = async () => {
+    if (!P2PModule) return true;
     return await P2PModule.isStopped();
 };
 
@@ -134,12 +142,14 @@ export const isStopped = async () => {
  * @returns {Promise<any>} Resultado de la llamada nativa.
  */
 export const sendData = (message) => {
+    if (!P2PModule) return;
     console.log("[P2P] Enviando mensaje:", message);
     return P2PModule.sendData(message);
 };
   
 
 function sendInitialSync() {
+    if (!P2PModule) return;
     const data = getLocalActivitiesAsJson();
     P2PModule.sendData(data);
 }
@@ -152,6 +162,7 @@ function sendInitialSync() {
  * @returns {function} Función para cancelar la suscripción.
  */
 export const subscribeToMessages = (callback) => {
+    if (!p2pEvents) return () => {};
     const subscription = p2pEvents.addListener("onDataReceived", callback);
     return () => subscription.remove();
 };
@@ -165,6 +176,7 @@ export const subscribeToMessages = (callback) => {
  * @returns {function} Función para cancelar la suscripción.
  */
 export const subscribeToConnected = (callback) => {
+    if (!p2pEvents) return () => {};
     const subscription = p2pEvents.addListener("onConnected", callback);
     return () => subscription.remove();
   };
@@ -228,6 +240,10 @@ export function processP2PMessage(rawMessage) {
  * @param {string} token - Token único del usuario.
  */
 export async function initializeP2PIfEnabled(token) {
+    if (Platform.OS !== 'android') {
+      console.log('[P2P] Not available on this platform, skipping initialization');
+      return;
+    }
     const enabled = getSettingValue(token, 'P2P_ENABLED');
     if (enabled) {
       const granted = await requestP2PPermissions();

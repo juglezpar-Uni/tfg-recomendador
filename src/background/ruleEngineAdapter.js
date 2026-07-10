@@ -4,7 +4,7 @@
  * Cached per app session — requires restart to switch.
  */
 
-import {NativeModules} from 'react-native';
+import {NativeModules, Platform} from 'react-native';
 import {retrieveValueParameter} from '../realmSchemas/RealmServices';
 import {RuleEngine as JsEngine} from '../ruleEngine';
 import {createSiddhiAppIntro, createSiddhiAppEnd} from '../siddhi/structure.js';
@@ -27,6 +27,12 @@ let _cachedId = null;
  * @returns {'siddhi' | 'js'}
  */
 export function getActiveEngineId() {
+  // iOS has no Siddhi native module (Kotlin-only). Force the JS engine
+  // unconditionally so the adapter never returns undefined from
+  // NativeModules.SiddhiClientModule on iOS.
+  if (Platform.OS === 'ios') {
+    return ENGINE_JS;
+  }
   let value = null;
   try {
     value = retrieveValueParameter(
