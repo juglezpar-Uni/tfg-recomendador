@@ -1,6 +1,6 @@
 workflows:
   ios-simulator-build:
-    name: iOS Simulator Build (sin firma)
+    name: iOS Simulator Build (Release, sin firma)
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
@@ -16,13 +16,13 @@ workflows:
         script: |
           cd ios && pod install --repo-update
 
-      - name: Compilar para simulador iOS (sin firma)
+      - name: Compilar para simulador iOS (Release, sin firma)
         script: |
           cd ios
           xcodebuild build \
             -workspace MobileApp.xcworkspace \
             -scheme MobileApp \
-            -configuration Debug \
+            -configuration Release \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build \
@@ -31,11 +31,11 @@ workflows:
 
       - name: Arrancar app en simulador iOS y capturar evidencias
         script: |
-          APP_PATH="ios/build/Build/Products/Debug-iphonesimulator/MobileApp.app"
+          APP_PATH="ios/build/Build/Products/Release-iphonesimulator/MobileApp.app"
           BUNDLE_ID="org.reactjs.native.example.MobileApp"
 
-          echo "=== Simuladores disponibles ==="
-          xcrun simctl list devices available
+          echo "=== Comprobando que el bundle JS esta embebido ==="
+          ls -la "$APP_PATH" | grep -i jsbundle || echo "AVISO: no se encontro main.jsbundle"
 
           # Apagar simuladores previos
           xcrun simctl shutdown all || true
@@ -60,19 +60,24 @@ workflows:
           # Lanzar la app
           xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
 
-          # Dar tiempo a que cargue el bundle JS y arranque la app
-          sleep 45
+          # Dar tiempo a que cargue y arranque (Realm, POIs, motor de reglas)
+          sleep 60
 
           # Capturar pantalla
           xcrun simctl io "$DEVICE_ID" screenshot ios_screenshot.png
+
+          # Segunda captura por si la primera pilla la pantalla de carga
+          sleep 20
+          xcrun simctl io "$DEVICE_ID" screenshot ios_screenshot_2.png
 
           # Parar la captura de logs
           kill $LOG_PID || true
 
           echo "=== Ultimas lineas del log de la app ==="
-          tail -150 app_logs.txt || true
+          tail -200 app_logs.txt || true
 
     artifacts:
-      - ios/build/Build/Products/Debug-iphonesimulator/*.app
+      - ios/build/Build/Products/Release-iphonesimulator/*.app
       - ios_screenshot.png
+      - ios_screenshot_2.png
       - app_logs.txt
