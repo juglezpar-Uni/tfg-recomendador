@@ -11,9 +11,11 @@ workflows:
       - name: Instalar dependencias de Node
         script: |
           npm ci --legacy-peer-deps
+
       - name: Instalar CocoaPods
         script: |
           cd ios && pod install --repo-update
+
       - name: Compilar para simulador iOS (sin firma)
         script: |
           cd ios
@@ -26,5 +28,51 @@ workflows:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO
+
+      - name: Arrancar app en simulador iOS y capturar evidencias
+        script: |
+          APP_PATH="ios/build/Build/Products/Debug-iphonesimulator/MobileApp.app"
+          BUNDLE_ID="org.reactjs.native.example.MobileApp"
+
+          echo "=== Simuladores disponibles ==="
+          xcrun simctl list devices available
+
+          # Apagar simuladores previos
+          xcrun simctl shutdown all || true
+
+          # Crear un simulador de iPhone con el runtime iOS mas reciente
+          RUNTIME=$(xcrun simctl list runtimes | grep -o 'com.apple.CoreSimulator.SimRuntime.iOS-[0-9-]*' | tail -1)
+          echo "Runtime elegido: $RUNTIME"
+          DEVICE_ID=$(xcrun simctl create tfg-sim com.apple.CoreSimulator.SimDeviceType.iPhone-15 "$RUNTIME")
+          echo "Simulador creado: $DEVICE_ID"
+
+          # Arrancar y esperar a que este listo
+          xcrun simctl boot "$DEVICE_ID"
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+
+          # Instalar la app compilada
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+
+          # Capturar los logs de la app en segundo plano
+          xcrun simctl spawn "$DEVICE_ID" log stream --predicate 'processImagePath CONTAINS "MobileApp"' --style compact > app_logs.txt 2>&1 &
+          LOG_PID=$!
+
+          # Lanzar la app
+          xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+
+          # Dar tiempo a que cargue el bundle JS y arranque la app
+          sleep 45
+
+          # Capturar pantalla
+          xcrun simctl io "$DEVICE_ID" screenshot ios_screenshot.png
+
+          # Parar la captura de logs
+          kill $LOG_PID || true
+
+          echo "=== Ultimas lineas del log de la app ==="
+          tail -150 app_logs.txt || true
+
     artifacts:
       - ios/build/Build/Products/Debug-iphonesimulator/*.app
+      - ios_screenshot.png
+      - app_logs.txt
