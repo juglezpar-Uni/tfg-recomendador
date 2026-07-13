@@ -8,6 +8,26 @@ workflows:
       xcode: 16.2
       cocoapods: default
     scripts:
+      - name: Provision oauth.json from encrypted env var
+        script: |
+          # oauth.json is gitignored (contains API keys). We generate it here
+          # from the encrypted OPENWEATHER_API_KEY environment variable so
+          # Metro can resolve the static imports in Position.js and
+          # externalServers.js. Only the OpenWeatherMap key is actually
+          # consumed by the JS code; the other historical keys in the local
+          # oauth.json (Facebook, Google, AccuWeather...) are dead code.
+          if [ -z "$OPENWEATHER_API_KEY" ]; then
+            echo "WARN: OPENWEATHER_API_KEY not set — using placeholder from oauth.example.json"
+            cp oauth.example.json oauth.json
+          else
+            cat > oauth.json <<EOF
+          {
+            "openweathermap": "$OPENWEATHER_API_KEY"
+          }
+          EOF
+            echo "oauth.json provisioned from env var (openweathermap key)"
+          fi
+
       - name: Instalar dependencias de Node
         script: |
           npm ci --legacy-peer-deps
