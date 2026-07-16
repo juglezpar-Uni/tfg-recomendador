@@ -1,9 +1,9 @@
 // App.js
-import React, { useEffect, useRef, useCallback } from 'react';
-import { InteractionManager } from 'react-native';
+import React, {useEffect, useRef, useCallback} from 'react';
+import {InteractionManager} from 'react-native';
 import './global.css';
-import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
-import { NavigationContainer } from '@react-navigation/native';
+import {GluestackUIProvider} from '@/components/ui/gluestack-ui-provider';
+import {NavigationContainer} from '@react-navigation/native';
 import DrawerNavigator from './src/navigation/DrawerNavigator';
 import {
   startContextSending,
@@ -27,11 +27,15 @@ export default function App() {
    * Uses a ref to avoid duplicate execution.
    */
   const initialize = useCallback(async () => {
-    if (initializedRef.current) {return;}
+    if (initializedRef.current) {
+      return;
+    }
     initializedRef.current = true;
 
     try {
-      console.log('[INIT] Waiting 20 seconds before starting background tasks...');
+      console.log(
+        '[INIT] Waiting 20 seconds before starting background tasks...',
+      );
       await new Promise(resolve => setTimeout(resolve, 20000));
 
       console.log('[INIT] Starting context sending...');
@@ -45,7 +49,10 @@ export default function App() {
       //runExperiment();
       //console.log('[INIT] Experiment started');
     } catch (err) {
-      console.error('[INIT] Error during Siddhi/background initialization:', err);
+      console.error(
+        '[INIT] Error during Siddhi/background initialization:',
+        err,
+      );
     }
   }, []);
 
@@ -66,7 +73,6 @@ export default function App() {
     };
   }, [initialize]);
 
-
   return (
     <GluestackUIProvider mode="light">
       <NavigationContainer>
@@ -75,4 +81,3 @@ export default function App() {
     </GluestackUIProvider>
   );
 }
-

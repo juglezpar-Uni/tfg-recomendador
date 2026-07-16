@@ -55,7 +55,6 @@ const LoadingScreen = ({navigation}) => {
     const initialize = async () => {
       try {
         //Notifications.configureNotifications();
-
         const user = Schemas.retrieveUser();
         console.log('User:', user);
 
