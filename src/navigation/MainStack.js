@@ -13,6 +13,8 @@ import TriggeringRules from '../screens/triggeringRules/TriggeringRules';
 import SettingsScreen from '../screens/Settings';
 import ProfileScreen from '../screens/Profile';
 import ActivityScreen from '../screens/Activity';
+import POIsScreen from '../screens/POIs';
+import RecommendationsScreen from '../screens/Recommendations';
 //Stacks
 import ContextRuleStack from './ContextRuleStack';
 import EditContextRuleStack from './EditContextRuleStack';
@@ -30,6 +32,8 @@ const MainStack = () => {
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="Activity" component={ActivityScreen} />
+      <Stack.Screen name="POIs" component={POIsScreen} options={{ title: 'POIs de Zaragoza' }} />
+      <Stack.Screen name="Recommendations" component={RecommendationsScreen} options={{ title: 'Recomendaciones' }} />
       <Stack.Screen name="Context_rules" component={ContextRulesScreen} options={{ title: 'Context Rules' }}/>
       <Stack.Screen name="Context_rule_stack" component={ContextRuleStack} options={{ headerShown: false }} />
       <Stack.Screen name="Edit_context_rule_stack" component={EditContextRuleStack} options={{ headerShown: false }} />

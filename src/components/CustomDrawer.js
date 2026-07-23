@@ -13,6 +13,8 @@ import {
   User,
   Settings,
   AlertTriangle,
+  MapPin,
+  Sparkles,
 } from 'lucide-react-native';
 import * as Schemas from '../realmSchemas/RealmServices';
 
@@ -21,10 +23,14 @@ const iconMap = {
   Profile: User,
   Settings,
   'You must be logged in': AlertTriangle,
+  POIs: MapPin,
+  Recommendations: Sparkles,
 };
 
 const options = [
   { key: 'Home' },
+  { key: 'POIs' },
+  { key: 'Recommendations' },
   { key: 'Profile' },
   { key: 'Settings' },
   { key: 'Recommendation triggering rules' },
@@ -47,15 +53,7 @@ export default function CustomDrawer(props) {
   }, []);
 
   const oPressSection = (key) => {
-    let routeName = key;
-    if (
-      key === options[3].key ||
-      key === options[4].key ||
-      key === options[5].key
-    ) {
-      routeName = key.replace(/ /g, '_');
-    }
-
+    const routeName = key.includes(' ') ? key.replace(/ /g, '_') : key;
     navigation.navigate('Main', { screen: routeName });
   };
 

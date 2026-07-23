@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {   Text } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // Gluestack UI
 import { Box } from '@/components/ui/box';
 // EMs
@@ -47,6 +47,18 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <Box flex={1} bgColor="$white">
+      <View style={styles.shortcuts}>
+        <TouchableOpacity
+          style={styles.shortcutBtn}
+          onPress={() => navigation.navigate('POIs')}>
+          <Text style={styles.shortcutText}>POIs de Zaragoza</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.shortcutBtn}
+          onPress={() => navigation.navigate('Recommendations')}>
+          <Text style={styles.shortcutText}>Recomendaciones</Text>
+        </TouchableOpacity>
+      </View>
       <TabList data={defaults} />
       <NavFooter  tab={'Default'} />
     </Box>
@@ -54,3 +66,23 @@ const HomeScreen = ({ navigation }) => {
 };
 
 export default HomeScreen;
+
+const styles = StyleSheet.create({
+  shortcutBtn: {
+    alignItems: 'center',
+    backgroundColor: '#1e90ff',
+    borderRadius: 8,
+    flex: 1,
+    paddingVertical: 10,
+  },
+  shortcutText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  shortcuts: {
+    flexDirection: 'row',
+    gap: 8,
+    padding: 12,
+  },
+});
