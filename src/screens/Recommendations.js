@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -10,11 +10,16 @@ import {
   View,
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useFocusEffect} from '@react-navigation/native';
 
 import POIDetails from '../components/POIDetails';
 import {listAvailable} from '../recommendation/AlgorithmRegistry';
 import {recommend} from '../recommendation/RecommendationEngine';
-import {retrieveCurrentLocation} from '../realmSchemas/RealmServices';
+import {
+  getLatestCachedBatch,
+  retrieveCurrentLocation,
+  retrieveUser,
+} from '../realmSchemas/RealmServices';
 import {haversineMeters, hasValidCoords} from '../utils/geo';
 import {formatPoiType} from '../utils/poiType';
 
@@ -23,6 +28,23 @@ const DEFAULT_MAX_ITEMS = 20;
 const DEFAULT_MAX_DISTANCE = 2000;
 
 const NEEDS_KEYWORD = new Set(['keyword', 'custom']);
+
+// -----------------------------------------------------------------------------
+// Small helper: human-readable relative time for the "auto batch" banner.
+// -----------------------------------------------------------------------------
+function formatTimeAgo(date) {
+  if (!date) return 'sin fecha';
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 0) return 'hace un instante';
+  const s = Math.round(diffMs / 1000);
+  if (s < 60) return `hace ${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `hace ${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `hace ${h} h`;
+  const d = Math.round(h / 24);
+  return `hace ${d} d`;
+}
 
 const RecommendationsScreen = () => {
   const algorithms = useMemo(
@@ -37,8 +59,18 @@ const RecommendationsScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [ranAlgorithm, setRanAlgorithm] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
+
+  // Two independent accordions: one for the auto-generated section (top) and
+  // one for the manual results list (bottom). Keeps expansion state isolated
+  // even if the same poiId appears in both sections.
+  const [expandedManualId, setExpandedManualId] = useState(null);
+  const [expandedAutoId, setExpandedAutoId] = useState(null);
+
   const [userPos, setUserPos] = useState(null);
+
+  // Last batch persisted to RecommendationCache — the vehicle by which the
+  // rule-engine bridge surfaces automatic recommendations to this screen.
+  const [autoBatch, setAutoBatch] = useState(null);
 
   useEffect(() => {
     const pos = retrieveCurrentLocation();
@@ -46,6 +78,26 @@ const RecommendationsScreen = () => {
       setUserPos({lat: pos.lat, lon: pos.lon});
     }
   }, []);
+
+  // Reload the auto batch every time the screen gains focus, so navigating
+  // away and back to this screen picks up any recommendation the bridge may
+  // have fired in the meantime.
+  useFocusEffect(
+    useCallback(() => {
+      const user = retrieveUser();
+      const userId = user?.name;
+      if (!userId) {
+        setAutoBatch(null);
+        return;
+      }
+      try {
+        setAutoBatch(getLatestCachedBatch(userId));
+      } catch (err) {
+        console.warn('[Recommendations] could not load auto batch:', err);
+        setAutoBatch(null);
+      }
+    }, []),
+  );
 
   const distanceFor = poi => {
     if (!poi || !userPos) return null;
@@ -79,7 +131,13 @@ const RecommendationsScreen = () => {
       const out = await recommend({algorithmId, context});
       setResults(out);
       setRanAlgorithm(algorithmId);
-      setExpandedId(null);
+      setExpandedManualId(null);
+      // The manual run also updates the cache, so refresh the auto banner
+      // with the freshly persisted batch.
+      const user = retrieveUser();
+      if (user?.name) {
+        setAutoBatch(getLatestCachedBatch(user.name));
+      }
     } catch (err) {
       console.error('[Recommendations] failed:', err);
       setError(err.message ?? String(err));
@@ -89,30 +147,85 @@ const RecommendationsScreen = () => {
     }
   };
 
-  const renderItem = ({item, index}) => {
-    const isOpen = expandedId === item.poiId;
-    return (
-      <View>
-        <Pressable
-          onPress={() => setExpandedId(isOpen ? null : item.poiId)}
-          style={({pressed}) => [styles.row, pressed && styles.rowPressed]}>
-          <Text style={styles.rank}>{index + 1}</Text>
-          <View style={styles.rowMain}>
-            <Text style={styles.name} numberOfLines={1}>
-              {item.poi?.name ?? `POI #${item.poiId}`}
+  // ---------------------------------------------------------------------------
+  // Row renderers — one factory shared between the auto section and the
+  // manual list, but each with its own expansion state.
+  // ---------------------------------------------------------------------------
+  const makeRowRenderer = (expandedId, setExpandedId) =>
+    ({item, index}) => {
+      const isOpen = expandedId === item.poiId;
+      return (
+        <View>
+          <Pressable
+            onPress={() => setExpandedId(isOpen ? null : item.poiId)}
+            style={({pressed}) => [styles.row, pressed && styles.rowPressed]}>
+            <Text style={styles.rank}>{index + 1}</Text>
+            <View style={styles.rowMain}>
+              <Text style={styles.name} numberOfLines={1}>
+                {item.poi?.name ?? `POI #${item.poiId}`}
+              </Text>
+              <Text style={styles.type} numberOfLines={1}>
+                {formatPoiType(item.poi?.type)}
+              </Text>
+            </View>
+            <Text style={styles.score}>{item.score.toFixed(3)}</Text>
+            <Text style={[styles.chevron, isOpen && styles.chevronOpen]}>
+              {isOpen ? '▼' : '▶'}
             </Text>
-            <Text style={styles.type} numberOfLines={1}>
-              {formatPoiType(item.poi?.type)}
-            </Text>
-          </View>
-          <Text style={styles.score}>{item.score.toFixed(3)}</Text>
-          <Text style={[styles.chevron, isOpen && styles.chevronOpen]}>
-            {isOpen ? '▼' : '▶'}
+          </Pressable>
+          {isOpen && (
+            <POIDetails
+              poi={item.poi}
+              distanceMeters={distanceFor(item.poi)}
+            />
+          )}
+        </View>
+      );
+    };
+
+  const renderManualRow = makeRowRenderer(
+    expandedManualId,
+    setExpandedManualId,
+  );
+  const renderAutoRow = makeRowRenderer(expandedAutoId, setExpandedAutoId);
+
+  // ---------------------------------------------------------------------------
+  // Auto section — banner + list of the last automatically-persisted batch.
+  // Rendered as the FlatList's ListHeaderComponent so it scrolls together
+  // with the manual results below.
+  // ---------------------------------------------------------------------------
+  const AutoSection = () => {
+    if (!autoBatch || autoBatch.items.length === 0) {
+      return (
+        <View style={styles.autoEmptyBanner}>
+          <Text style={styles.autoEmptyText}>
+            Todavía no hay ninguna recomendación en caché. En cuanto una regla
+            de activación se dispare (o generes una manualmente aquí abajo)
+            aparecerá arriba de forma automática.
           </Text>
-        </Pressable>
-        {isOpen && (
-          <POIDetails poi={item.poi} distanceMeters={distanceFor(item.poi)} />
-        )}
+        </View>
+      );
+    }
+    return (
+      <View style={styles.autoContainer}>
+        <View style={styles.autoBanner}>
+          <Text style={styles.autoTitle}>Recomendación automática</Text>
+          <Text style={styles.autoMeta}>
+            Algoritmo «{autoBatch.algorithm}» ·{' '}
+            {formatTimeAgo(autoBatch.timestamp)} · {autoBatch.items.length} POIs
+          </Text>
+        </View>
+        {autoBatch.items.map((item, index) => (
+          <View key={`auto-${item.poiId}`}>
+            {renderAutoRow({item, index})}
+            {index < autoBatch.items.length - 1 && (
+              <View style={styles.separator} />
+            )}
+          </View>
+        ))}
+        <View style={styles.sectionDivider}>
+          <Text style={styles.sectionDividerText}>Generación manual</Text>
+        </View>
       </View>
     );
   };
@@ -144,7 +257,9 @@ const RecommendationsScreen = () => {
         {NEEDS_KEYWORD.has(algorithmId) && (
           <>
             <Text style={styles.label}>
-              {algorithmId === 'keyword' ? 'Palabras clave' : 'Contexto (tipo/temática)'}
+              {algorithmId === 'keyword'
+                ? 'Palabras clave'
+                : 'Contexto (tipo/temática)'}
             </Text>
             <TextInput
               value={keyword}
@@ -180,9 +295,10 @@ const RecommendationsScreen = () => {
 
       <FlatList
         data={results}
-        keyExtractor={item => String(item.poiId)}
-        renderItem={renderItem}
-        extraData={expandedId}
+        keyExtractor={item => `manual-${item.poiId}`}
+        renderItem={renderManualRow}
+        extraData={{expandedManualId, expandedAutoId, autoBatch}}
+        ListHeaderComponent={AutoSection}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
           !loading && ranAlgorithm ? (
@@ -199,6 +315,40 @@ const RecommendationsScreen = () => {
 export default RecommendationsScreen;
 
 const styles = StyleSheet.create({
+  autoBanner: {
+    borderLeftColor: '#1e90ff',
+    borderLeftWidth: 3,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  autoContainer: {
+    backgroundColor: '#f8fbff',
+    borderBottomColor: '#dce6f5',
+    borderBottomWidth: 1,
+  },
+  autoEmptyBanner: {
+    backgroundColor: '#f8fbff',
+    borderBottomColor: '#dce6f5',
+    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  autoEmptyText: {
+    color: '#666',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  autoMeta: {
+    color: '#4b6b93',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  autoTitle: {
+    color: '#1e90ff',
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
   button: {
     alignItems: 'center',
     backgroundColor: '#1e90ff',
@@ -213,6 +363,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  chevron: {
+    color: '#999',
+    fontSize: 12,
+    marginLeft: 10,
+    textAlign: 'center',
+    width: 12,
+  },
+  chevronOpen: {
+    color: '#1e90ff',
   },
   chip: {
     backgroundColor: '#f4f4f4',
@@ -282,16 +442,6 @@ const styles = StyleSheet.create({
     marginRight: 12,
     width: 24,
   },
-  chevron: {
-    color: '#999',
-    fontSize: 12,
-    marginLeft: 10,
-    textAlign: 'center',
-    width: 12,
-  },
-  chevronOpen: {
-    color: '#1e90ff',
-  },
   row: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -311,6 +461,21 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     fontWeight: '600',
     marginLeft: 8,
+  },
+  sectionDivider: {
+    alignItems: 'center',
+    backgroundColor: '#f4f4f4',
+    borderBottomColor: '#eee',
+    borderBottomWidth: 1,
+    borderTopColor: '#eee',
+    borderTopWidth: 1,
+    paddingVertical: 6,
+  },
+  sectionDividerText: {
+    color: '#666',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   separator: {
     backgroundColor: '#eee',

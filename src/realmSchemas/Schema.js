@@ -174,6 +174,14 @@ export class TriggeringRule extends Realm.Object {
       switchState: 'bool',
       contextRules: 'ContextRule[]',
       denyContextRule: 'bool[]',      // denies based on rule index
+      // v3: algorithm chosen by the user for this rule. Empty string
+      // means "use the bridge's default type→algorithm map".
+      algorithm: 'string?',
+      // v3: algorithm-specific parameters serialized as JSON string
+      // (e.g. '{"keyword":"museo"}' for keyword algorithm, or
+      // '{"matchKeywords":["museo","goya"]}' for custom). Empty string
+      // means "no params, algorithm uses its own defaults".
+      algorithmParams: 'string?',
     },
   };
 }

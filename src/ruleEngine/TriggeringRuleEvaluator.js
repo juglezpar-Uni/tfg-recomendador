@@ -12,11 +12,13 @@ export function evaluateTriggeringRule(triggeringRule, contextRuleEvaluations) {
     return false;
   }
 
-  const crs = Object.values(triggeringRule.contextRules ?? {});
-  const denyFlags = triggeringRule.denyContextRule ?? [];
+  // Array.from handles both plain JS arrays (tests) and Realm.List (production).
+  // Object.values used to be here but on some Realm builds it returned an empty
+  // array from Realm.List, which silently disabled every user-defined TR.
+  const crs = Array.from(triggeringRule.contextRules ?? []);
+  const denyFlags = Array.from(triggeringRule.denyContextRule ?? []);
 
   if (crs.length === 0) {
-    // A triggering rule with zero context rules can't usefully fire.
     return false;
   }
 
@@ -25,8 +27,6 @@ export function evaluateTriggeringRule(triggeringRule, contextRuleEvaluations) {
     const matched = contextRuleEvaluations[cr.name] === true;
     const negated = denyFlags[i] === true;
 
-    // negated && matched     → fails (we wanted NOT)
-    // !negated && !matched   → fails (we wanted YES)
     if (negated ? matched : !matched) {
       return false;
     }

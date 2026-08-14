@@ -1189,6 +1189,67 @@ export function getCachedRecommendations(userId, algorithmId) {
 }
 
 /**
+ * Returns the most recent cached recommendation batch for a user, already
+ * hydrated with the corresponding POIs. Looks across every algorithm and
+ * picks the one whose latest row has the newest timestamp — that is, the
+ * batch produced by whichever engine or bridge fired most recently.
+ *
+ * Used by the Recommendations screen to surface recommendations produced
+ * automatically by the rule-engine bridge (which persists them to the cache
+ * without pushing anything to the UI on its own).
+ *
+ * @param {string} userId
+ * @returns {{
+ *   algorithm: string,
+ *   timestamp: Date,
+ *   items: Array<{poiId: number, score: number, poi: Object|null}>
+ * } | null}
+ */
+export function getLatestCachedBatch(userId) {
+  const allCached = realm
+    .objects('RecommendationCache')
+    .filtered('userId == $0', userId)
+    .sorted('timestamp', true);
+  if (allCached.length === 0) {
+    return null;
+  }
+
+  const latestAlgo = allCached[0].algorithm;
+  const latestTs = new Date(allCached[0].timestamp);
+
+  const batch = allCached
+    .filtered('algorithm == $0', latestAlgo)
+    .sorted('score', true);
+
+  const poisById = new Map(
+    realm.objects('ZaragozaPOI').map(p => [
+      p.id,
+      {
+        id: p.id,
+        name: p.name,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        type: p.type,
+        description: p.description ?? null,
+        photoUrl: p.photoUrl ?? null,
+        source: p.source,
+        lastUpdated: p.lastUpdated,
+      },
+    ]),
+  );
+
+  return {
+    algorithm: latestAlgo,
+    timestamp: latestTs,
+    items: Array.from(batch).map(r => ({
+      poiId: r.poiId,
+      score: r.score,
+      poi: poisById.get(r.poiId) ?? null,
+    })),
+  };
+}
+
+/**
  * Returns all valorations for a user as plain objects.
  * Used by CustomAlgorithm to factor in historical ratings.
  *

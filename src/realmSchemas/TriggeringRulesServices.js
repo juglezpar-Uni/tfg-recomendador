@@ -84,7 +84,14 @@ export function updateStateTriggeringRule(id, ruleState) {
  *        An array containing selected context rule IDs and their deny flags.
  * @param {string} recommendationType - The type of recommendation associated with the rule.
  */
-export function updateTriggeringRule(id, name, contextRulesArray, recommendationType) {
+export function updateTriggeringRule(
+  id,
+  name,
+  contextRulesArray,
+  recommendationType,
+  algorithm = '',
+  algorithmParams = '',
+) {
   const contextRules = [];
   const denyContextRule = [];
 
@@ -106,6 +113,8 @@ export function updateTriggeringRule(id, name, contextRulesArray, recommendation
       switchState: true,
       contextRules,
       denyContextRule,
+      algorithm,          // v3
+      algorithmParams,    // v3
     }, true);
   });
 }
@@ -152,7 +161,13 @@ export function existsByNameTriggeringRuleAndId(id, name) {
  *        An array containing selected context rule IDs and their deny flags.
  * @param {string} recommendationType - The type of recommendation to associate.
  */
-export function storeTriggeringRule(name, contextRulesArray, recommendationType) {
+export function storeTriggeringRule(
+  name,
+  contextRulesArray,
+  recommendationType,
+  algorithm = '',
+  algorithmParams = '',
+) {
   console.log('storeTriggeringRule');
 
   // Generate new unique ID by finding the highest existing one
@@ -181,6 +196,8 @@ export function storeTriggeringRule(name, contextRulesArray, recommendationType)
       switchState: true,
       contextRules,
       denyContextRule,
+      algorithm,          // v3
+      algorithmParams,    // v3
     });
   });
 }

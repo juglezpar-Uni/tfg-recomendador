@@ -32,7 +32,11 @@ import {checkEMAvailability} from '../em/Fetch'; // named export for the new pro
 import * as Schemas from '../realmSchemas/RealmServices';
 
 //Rule engine (Siddhi native OR JS, selected via the RULE_ENGINE Parameter)
-import {getEngine, bootstrapRuleEngine} from '../background/ruleEngineAdapter';
+import {
+  getEngine,
+  bootstrapRuleEngine,
+  _resetEngineCache,
+} from '../background/ruleEngineAdapter';
 
 //Bridge between the rule engine (Sprint 3) and the recommendation engine (Sprint 2)
 import {bootstrapRecommendationBridge} from '../ruleEngine';

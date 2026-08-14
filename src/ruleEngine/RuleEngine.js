@@ -113,6 +113,12 @@ class RuleEngine {
         triggered.push({
           contextId: userContext.contextId,
           recommendationType: tr.recommendationType,
+          ruleName: tr.name, // surfaced downstream (bridge, notifications) for traceability
+          // v3 additions: propagate the algorithm and its params to the bridge
+          // so the user's choice for this specific rule wins over the bridge's
+          // default type→algorithm map. Empty/null means "use the map".
+          algorithm: tr.algorithm ?? '',
+          algorithmParams: tr.algorithmParams ?? '',
         });
       }
     }

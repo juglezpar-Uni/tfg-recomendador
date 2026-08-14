@@ -1,4 +1,8 @@
-import notifee, { AuthorizationStatus, AndroidImportance } from '@notifee/react-native';
+import notifee, {
+  AuthorizationStatus,
+  AndroidImportance,
+  EventType,
+} from '@notifee/react-native';
 
 import * as Schemas from '../realmSchemas/RealmServices';
 /**
@@ -32,12 +36,26 @@ export async function configureNotifications() {
  * @function onForegroundEvent
  */
 notifee.onForegroundEvent(({ type, detail }) => {
-  if (type === notifee.EventType.PRESS) {
+  if (type === EventType.PRESS) {
     console.log('NOTIFICATION (foreground):', detail.notification);
+    const data = detail.notification?.data;
+    // v3: bridge-driven notifications open the Recommendations screen so
+    // the user can immediately see the automatically-generated batch. Skip
+    // the heredado processItem() (which expects an R-Rules Activity payload).
+    if (data?.source === 'rule-engine-bridge') {
+      console.log(
+        '[Notification] rule-engine-bridge press → navigating to Recommendations',
+      );
+      // Lazy require to avoid loading navigation code in test envs.
+      // eslint-disable-next-line global-require
+      const {navigateToScreen} = require('../navigation/navigationRef');
+      navigateToScreen('Recommendations');
+      return;
+    }
     try {
       // Ensure data exists before processing
-      if (detail.notification?.data) {
-        processItem(detail.notification.data);
+      if (data) {
+        processItem(data);
       } else {
         console.warn('Notification data is undefined.');
       }
@@ -58,11 +76,26 @@ notifee.onForegroundEvent(({ type, detail }) => {
  * @function onBackgroundEvent
  */
 notifee.onBackgroundEvent(async ({ type, detail }) => {
-  if (type === notifee.EventType.PRESS) {
+  if (type === EventType.PRESS) {
     console.log('NOTIFICATION (background):', detail.notification);
+    const data = detail.notification?.data;
+    // v3: navigate to Recommendations for bridge-driven notifications
+    // (same as the foreground handler). If the navigator is not ready yet
+    // — because the app was cold-started by tapping the notification — the
+    // navigateToScreen helper logs and returns silently. The user still
+    // ends up in Home, one tap away from Recommendations.
+    if (data?.source === 'rule-engine-bridge') {
+      console.log(
+        '[Notification] rule-engine-bridge press (background) → navigating to Recommendations',
+      );
+      // eslint-disable-next-line global-require
+      const {navigateToScreen} = require('../navigation/navigationRef');
+      navigateToScreen('Recommendations');
+      return;
+    }
     try {
-      if (detail.notification?.data) {
-        await processItem(detail.notification.data);
+      if (data) {
+        await processItem(data);
       } else {
         console.warn('Notification data is undefined.');
       }
@@ -215,6 +248,63 @@ export async function activityUpdate() {
         id: 'default',
       },
       vibrationPattern: [0, 300],
+    },
+  });
+}
+
+/**
+ * Displays a local push notification triggered by the rule-engine bridge
+ * when a triggering rule fires and its associated recommendation algorithm
+ * has just produced a fresh batch.
+ *
+ * The body is composed from the payload received by the bridge:
+ *   - `recommendationType`: the type the rule requested (e.g. "Restaurants")
+ *   - `algorithmId`: the algorithm that actually ran
+ *   - `count`: number of POIs the algorithm returned
+ *   - `ruleName` (optional): the name of the triggering rule, for traceability
+ *
+ * Uses the "default" channel created at startup by `createDefaultChannel()`.
+ *
+ * @param {Object} payload
+ * @param {string} payload.recommendationType
+ * @param {string} payload.algorithmId
+ * @param {number} payload.count
+ * @param {string} [payload.ruleName]
+ * @returns {Promise<void>}
+ */
+export async function notifyRecommendation({
+  recommendationType,
+  algorithmId,
+  count,
+  ruleName,
+}) {
+  const type = recommendationType ?? 'recomendaciones';
+  const algo = algorithmId ?? 'desconocido';
+  const rule = ruleName ? ` por regla «${ruleName}»` : '';
+  const body =
+    count > 0
+      ? `${count} sugerencias de ${type}${rule} con «${algo}»`
+      : `Sin resultados para ${type}${rule}`;
+
+  await notifee.displayNotification({
+    title: 'Nueva recomendación disponible',
+    body,
+    android: {
+      channelId: 'default',
+      smallIcon: 'ic_launcher_foreground',
+      largeIcon: 'ic_launcher_foreground',
+      color: '#1e90ff',
+      pressAction: {id: 'default'},
+      // notifee requires all values in the pattern to be positive.
+      // Format: [waitBeforeVibration, vibrateDuration, waitBetween, vibrate, ...]
+      vibrationPattern: [300, 500],
+      sound: 'default',
+    },
+    data: {
+      source: 'rule-engine-bridge',
+      recommendationType: type,
+      algorithmId: algo,
+      ruleName: ruleName ?? '',
     },
   });
 }

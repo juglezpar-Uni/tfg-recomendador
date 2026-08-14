@@ -96,8 +96,11 @@ export function getKeywordsForType(recommendationType) {
 
 /**
  * Convenience subscriber: forwards a triggered recommendation to the
- * RecommendationEngine. Uses dynamic import so this module remains loadable in
- * environments where Realm is not available (e.g. unit tests).
+ * RecommendationEngine and, once the batch is produced, fires a local push
+ * notification so the user is aware that a new automatic recommendation is
+ * available. Uses dynamic imports so this module remains loadable in
+ * environments where Realm or the native notification module are not
+ * available (e.g. unit tests).
  *
  * The recommendationType (and any keywords mapped to it) are propagated into
  * the algorithm's `context` so CustomAlgorithm (and future algorithms) can
@@ -106,16 +109,39 @@ export function getKeywordsForType(recommendationType) {
  * If no algorithm is mapped to the incoming type — and no `default` is set —
  * the call is a no-op.
  *
- * @param {{ contextId: string, recommendationType: string, userId?: string, context?: Object }} payload
+ * @param {{ contextId: string, recommendationType: string, ruleName?: string, userId?: string, context?: Object }} payload
  * @returns {Promise<Array|null>} The recommend() result, or null if skipped.
  */
 export async function dispatchToRecommendationEngine(payload) {
-  const algorithmId = getAlgorithmForType(payload?.recommendationType);
+  // v3: prefer the algorithm the user picked on the rule itself. If the rule
+  // doesn't specify one (empty string or undefined), fall back to the bridge's
+  // typeToAlgorithm map — the pre-existing default behaviour.
+  const ruleAlgorithm =
+    payload?.algorithm && payload.algorithm !== '' ? payload.algorithm : null;
+  const algorithmId =
+    ruleAlgorithm ?? getAlgorithmForType(payload?.recommendationType);
   if (!algorithmId) {
     console.log(
       `[RecommendationBridge] no algorithm mapped for type "${payload?.recommendationType}" (no default either), skipping`,
     );
     return null;
+  }
+
+  // v3: parse the algorithm-specific params from the rule (stored as JSON).
+  // These override anything coming from getKeywordsForType or payload.context.
+  let ruleParams = {};
+  if (payload?.algorithmParams) {
+    try {
+      const parsed = JSON.parse(payload.algorithmParams);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        ruleParams = parsed;
+      }
+    } catch (err) {
+      console.warn(
+        '[RecommendationBridge] invalid algorithmParams JSON, ignoring:',
+        err?.message ?? err,
+      );
+    }
   }
 
   const matchKeywords = getKeywordsForType(payload.recommendationType);
@@ -126,15 +152,38 @@ export async function dispatchToRecommendationEngine(payload) {
     // algorithm fall back to its own default (usually the recommendationType
     // itself as a single keyword).
     ...(matchKeywords.length > 0 ? {matchKeywords} : {}),
+    // Rule-specific params take precedence over the bridge's map defaults.
+    ...ruleParams,
   };
 
   // Dynamic import to avoid loading Realm in test environments
   const {recommend} = await import('../recommendation/RecommendationEngine');
-  return recommend({
+  const result = await recommend({
     algorithmId,
     userId: payload.userId,
     context: mergedContext,
   });
+
+  // Fire-and-forget local notification. Wrapped in a try/catch so any
+  // failure of the native notification module (permissions denied, channel
+  // missing on iOS, tests running without notifee) never propagates back
+  // to the rule engine.
+  try {
+    const {notifyRecommendation} = await import('../events/Notification');
+    await notifyRecommendation({
+      recommendationType: payload.recommendationType,
+      algorithmId,
+      count: Array.isArray(result) ? result.length : 0,
+      ruleName: payload.ruleName,
+    });
+  } catch (err) {
+    console.warn(
+      '[RecommendationBridge] notification failed (non-fatal):',
+      err?.message ?? err,
+    );
+  }
+
+  return result;
 }
 
 /**

@@ -5,6 +5,7 @@ import './global.css';
 import {GluestackUIProvider} from '@/components/ui/gluestack-ui-provider';
 import {NavigationContainer} from '@react-navigation/native';
 import DrawerNavigator from './src/navigation/DrawerNavigator';
+import {navigationRef} from './src/navigation/navigationRef';
 import {
   startContextSending,
   stopContextSending,
@@ -75,7 +76,7 @@ export default function App() {
 
   return (
     <GluestackUIProvider mode="light">
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <DrawerNavigator />
       </NavigationContainer>
     </GluestackUIProvider>

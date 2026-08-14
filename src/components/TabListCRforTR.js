@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useLayoutEffect } from 'react';
-import {  View, Text, Alert, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
+import {  View, Text, Alert, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 //Gluestack ui
@@ -29,11 +29,19 @@ import { ChevronDownIcon, CircleMinus } from 'lucide-react-native';
 import * as Schemas from '../realmSchemas/RealmServices';
 import * as TriggerinSchema from '../realmSchemas/TriggeringRulesServices';
 import {bootstrapRuleEngine} from '../background/ruleEngineAdapter';
+import {listAvailable} from '../recommendation/AlgorithmRegistry';
 
 const RECOMMENDATION_TYPES = [
   'Restaurants', 'Shops', 'Museums', 'Places Of Interest',
   'Accommodation', 'ShowsHalls', 'EntertainmentEstablishments', 'Leisure', 'ChangeRoom',
 ];
+
+// Algorithm identifier used to mean "no algorithm chosen for this rule,
+// fall back to the bridge's typeToAlgorithm map". Stored in Realm as ''.
+const ALGORITHM_DEFAULT = 'default';
+
+// Algorithms that need the user to provide a keyword-like parameter.
+const NEEDS_KEYWORD = new Set(['keyword', 'custom']);
 
 const LabeledInputField = ({
   label,
@@ -95,6 +103,20 @@ const TabListCRforTR = ({ createScreen }) => {
   const [typeOfRecommendation, setTypeOfRecommendation] = useState('default');
   const [allContextRules, setAllContextRules] = useState([]);
 
+  // v3: algorithm the user picks for this rule + its keyword-like param.
+  // 'default' means "let the bridge decide via its typeToAlgorithm map".
+  const [algorithm, setAlgorithm] = useState(ALGORITHM_DEFAULT);
+  const [keywordParam, setKeywordParam] = useState('');
+
+  // All algorithms the system currently offers, plus 'default' at the front.
+  const algorithmOptions = useMemo(
+    () => [
+      ALGORITHM_DEFAULT,
+      ...listAvailable().map(a => a.constructor.id),
+    ],
+    [],
+  );
+
   useEffect(() => {
     const fetchedContextRules = Schemas.retrieveContextRules() || [];
     const pickerItems = [
@@ -134,6 +156,25 @@ const TabListCRforTR = ({ createScreen }) => {
 
 
       setContextRules(contextRulesAux);
+
+      // v3: hydrate the algorithm chip + keyword param from the stored rule.
+      // Empty/null algorithm maps to 'default' (bridge fallback).
+      const storedAlg = triggeringRule.algorithm;
+      setAlgorithm(storedAlg && storedAlg !== '' ? storedAlg : ALGORITHM_DEFAULT);
+      if (triggeringRule.algorithmParams) {
+        try {
+          const parsed = JSON.parse(triggeringRule.algorithmParams);
+          if (parsed && typeof parsed === 'object') {
+            if (typeof parsed.keyword === 'string') {
+              setKeywordParam(parsed.keyword);
+            } else if (Array.isArray(parsed.matchKeywords)) {
+              setKeywordParam(parsed.matchKeywords.join(' '));
+            }
+          }
+        } catch {
+          // Malformed JSON in storage — ignore, keep the input empty.
+        }
+      }
     } else if (createScreen) {
       addContextRuleRow();
     }
@@ -186,6 +227,12 @@ const TabListCRforTR = ({ createScreen }) => {
         return "Recommendation types selected can't be repeated.";
       }
 
+      // v3: keyword algorithm requires a keyword. Custom accepts empty
+      // (it falls back to recommendationType as a single keyword).
+      if (algorithm === 'keyword' && !keywordParam.trim()) {
+        return "Keyword algorithm requires a keyword.";
+      }
+
       return null;
     })();
 
@@ -202,10 +249,39 @@ const TabListCRforTR = ({ createScreen }) => {
       Alert.alert('Warning', 'There is already a triggering rule with that name.');
       return;
     }
+
+    // v3: build the algorithm and params to store.
+    //   - 'default' chip → empty string in Realm → bridge uses its map.
+    //   - keyword → {keyword: "..."} serialized as JSON.
+    //   - custom  → {matchKeywords: [...]} serialized as JSON (split by whitespace).
+    //   - random/closeness → no params.
+    const algToStore = algorithm === ALGORITHM_DEFAULT ? '' : algorithm;
+    let algParamsToStore = '';
+    const trimmedKw = keywordParam.trim();
+    if (algorithm === 'keyword' && trimmedKw) {
+      algParamsToStore = JSON.stringify({keyword: trimmedKw});
+    } else if (algorithm === 'custom' && trimmedKw) {
+      const words = trimmedKw.split(/\s+/).filter(Boolean);
+      algParamsToStore = JSON.stringify({matchKeywords: words});
+    }
+
     if (createScreen) {
-      TriggerinSchema.storeTriggeringRule(name, contextRules, typeOfRecommendation);
+      TriggerinSchema.storeTriggeringRule(
+        name,
+        contextRules,
+        typeOfRecommendation,
+        algToStore,
+        algParamsToStore,
+      );
     } else {
-      TriggerinSchema.updateTriggeringRule(triggeringRule.id, name, contextRules, typeOfRecommendation);
+      TriggerinSchema.updateTriggeringRule(
+        triggeringRule.id,
+        name,
+        contextRules,
+        typeOfRecommendation,
+        algToStore,
+        algParamsToStore,
+      );
     }
 
     bootstrapRuleEngine();
@@ -222,8 +298,65 @@ const TabListCRforTR = ({ createScreen }) => {
         },
       },
     ]);
-  }, [name, typeOfRecommendation, contextRules, createScreen, navigation, triggeringRule]);
+  }, [name, typeOfRecommendation, contextRules, algorithm, keywordParam, createScreen, navigation, triggeringRule]);
 
+
+  const renderAlgorithmSection = (isEditable) => (
+    <>
+      <View style={styles.lineView}>
+        <View style={styles.lineStyle} />
+      </View>
+
+      <Text style={styles.title}>Algorithm:</Text>
+      <View style={styles.chipRow}>
+        {algorithmOptions.map((id) => {
+          const selected = id === algorithm;
+          return (
+            <TouchableOpacity
+              key={id}
+              onPress={isEditable ? () => setAlgorithm(id) : undefined}
+              disabled={!isEditable}
+              style={[
+                styles.chip,
+                selected && styles.chipSelected,
+                !isEditable && styles.chipDisabled,
+              ]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  selected && styles.chipTextSelected,
+                ]}>
+                {id === ALGORITHM_DEFAULT ? '(por defecto)' : id}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {NEEDS_KEYWORD.has(algorithm) && (
+        <>
+          <Text style={styles.title}>
+            {algorithm === 'keyword' ? 'Keyword:' : 'Context words:'}
+          </Text>
+          <Input
+            style={styles.input}
+            size="lg"
+            variant="underlined"
+            isReadOnly={!isEditable}
+            isDisabled={!isEditable}>
+            <InputField
+              placeholder={algorithm === 'keyword' ? 'e.g. museo' : 'e.g. museo goya'}
+              maxLength={80}
+              value={keywordParam}
+              onChangeText={setKeywordParam}
+              editable={isEditable}
+              pointerEvents={isEditable ? 'auto' : 'none'}
+            />
+          </Input>
+        </>
+      )}
+    </>
+  );
 
   const renderContextRuleRow = (item, index, isEditable = true) => (
     <HStack key={item.index} space="md" style={styles.hstack}>
@@ -318,6 +451,8 @@ const TabListCRforTR = ({ createScreen }) => {
           isDisabled={false}
         />
 
+        {renderAlgorithmSection(true)}
+
         <Button style={styles.saveButton} onPress={onPressSaveButton}>
           <Text style={styles.saveText}>Save</Text>
         </Button>
@@ -357,6 +492,8 @@ const TabListCRforTR = ({ createScreen }) => {
           onChange={setTypeOfRecommendation}
           isDisabled={true}
         />
+
+        {renderAlgorithmSection(false)}
 
         <Button style={styles.saveButton} onPress={() => setEdit(true)}>
           <Text style={styles.saveText}>Edit</Text>
@@ -489,5 +626,33 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginLeft: 20,
     marginTop: 20,
+  },
+  chip: {
+    backgroundColor: '#f4f4f4',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  chipDisabled: {
+    opacity: 0.6,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+    marginLeft: 20,
+    marginRight: 20,
+  },
+  chipSelected: {
+    backgroundColor: '#1e90ff',
+  },
+  chipText: {
+    color: '#333',
+    fontSize: 14,
+  },
+  chipTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
